@@ -1,11 +1,7 @@
-game-o-life
+crappy-flappy
 ===========
 
-Yet another game of life implementation
-
-Press n to step into the next generation
-
-Assumes a a posix-ish system with make installed
+Yet another flappy bird clone.
 
 Requires
 * SDL 2
