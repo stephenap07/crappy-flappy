@@ -302,6 +302,11 @@ class FlappyFuch :public Entity
             score_queued = true;
         }
 
+        int get_score()
+        {
+            return score_count;
+        }
+
     private:
         SDL_Rect frames[4];
         int current_frame;
@@ -549,6 +554,20 @@ static inline void put_pixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
 }
 
 
+static std::vector<int> digit_to_array(int digit)
+{
+    std::vector<int> result;
+    std::vector<int>::iterator it;
+
+    while (digit) {
+        it = result.begin();
+        result.insert(it, digit % 10);
+        digit /= 10;
+    }
+
+    return result;
+}
+
 int main(int argc, char *argv[]) {
 
     unsigned long ticks = 0, delta = 0;
@@ -679,6 +698,30 @@ int main(int argc, char *argv[]) {
         col_bank.register_entity(&i);
     }
 
+    SDL_Rect numbers[20] = {
+        { 288, 100, 8, 10 }, // 0
+        { 288, 118, 8, 10 }, // 1
+        { 288, 134, 8, 10 }, // 2
+        { 288, 150, 8, 10 }, // 3
+        { 287, 173, 8, 10 }, // 4
+        { 287, 185, 8, 10 }, // 5
+        { 165, 245, 8, 10 }, // 6
+        { 175, 245, 8, 10 }, // 7
+        { 185, 245, 8, 10 }, // 8
+        { 195, 245, 8, 10 }, // 9
+
+        { 287, 74, 7, 10 },  // 0_i
+        { 288, 162, 7, 10 }, // 1_i
+        { 204, 245, 6, 7 },  // 2_i
+        { 212, 245, 6, 7 },  // 3_i
+        { 220, 245, 6, 7 },  // 4_i
+        { 228, 245, 6, 7 },  // 5_i
+        { 284, 197, 6, 7 },  // 6_i
+        { 292, 197, 6, 7 },  // 7_i
+        { 284, 213, 6, 7 },  // 8_i
+        { 292, 213, 6, 7 },  // 9_i
+    };
+
     while (!quit) {
         delta = SDL_GetTicks() - last_tick;
         last_tick = SDL_GetTicks();
@@ -738,6 +781,20 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        std::vector<int> score_array = digit_to_array(player.get_score());
+        std::vector<SDL_Rect> score_dest_rect;
+
+        for (int i = 0; i < score_array.size(); i++) {
+            SDL_Rect dest = {
+                (int)((SCREEN_WIDTH / 2) - (score_array.size() - i) * 8 * 4),
+                10,
+                32,
+                40
+            };
+
+            score_dest_rect.push_back(dest);
+        }
+
         SDL_RenderClear(renderer);
 
         for (int i = 0; i < (SCREEN_WIDTH / 143); i++)
@@ -748,6 +805,10 @@ int main(int argc, char *argv[]) {
 
         for (std::vector<Obstacle>::iterator it = obstacles.begin(); it != obstacles.end(); it++)
             it->draw(renderer);
+
+        for (int i = 0; i < score_dest_rect.size(); i++) {
+            sp::render_texture(renderer, tex, score_dest_rect[i], &numbers[score_array[i]]);
+        }
 
         player.draw(renderer);
         SDL_RenderPresent(renderer);
