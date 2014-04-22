@@ -7,7 +7,7 @@ CFLAGS=-Wall --std=c++11
 all: $(EXE)
 
 $(EXE): main.o
-	$(CC) -o $(EXE) main.o $(shell sdl2-config --libs) -lSDL2_image
+	$(CC) -o $(EXE) main.o $(shell sdl2-config --libs) -lSDL2_image -lSDL_mixer
 
 main.o: main.cpp
 	$(CC) -c $(CFLAGS) $(shell sdl2-config --cflags) main.cpp
