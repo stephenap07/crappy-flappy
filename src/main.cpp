@@ -10,7 +10,7 @@
 
 #include "sdl_util.hpp"
 
-#define SCREEN_WIDTH  900
+#define SCREEN_WIDTH  400
 #define SCREEN_HEIGHT 360
 #define SCREEN_DEPTH  32
 
@@ -42,7 +42,7 @@ class Entity
             id = generate_id();
         }
 
-        virtual void update(int ticks) = 0;
+        virtual void update(int delta) = 0;
         virtual void draw(SDL_Renderer *renderer) = 0;
         virtual void on_collision(Entity *ent) {};
 
@@ -143,6 +143,15 @@ class CollisionBank
             return true;
         } 
 
+        static  bool check_point_collision(int x, int y, SDL_Rect rect)
+        {
+            if (x >= rect.x && x <= (rect.x + rect.w) &&
+                y >= rect.y && y <= (rect.y + rect.h))
+                return true;
+            else
+                return false;
+        }
+
     private:
         std::vector<Entity*> entities;
 };
@@ -152,7 +161,7 @@ class FlappyFuch :public Entity
 {
     public:
         
-        FlappyFuch() :Entity()
+        FlappyFuch(int x, int y) :Entity(), x(x), y(y)
         {
 
             frames[0] = {
@@ -186,23 +195,17 @@ class FlappyFuch :public Entity
             y_v = 30;
             angle = 0;
 
-            x = SCREEN_WIDTH / 12;
-            y = 0;
-
             dead = false;
             score_queued = false;
             score_count = 0;
+            idle = false;
 
             set_collision();
         }
 
-        /**
-         * Make the flappy bird flap his flappy wings
-         *
-         */
         void flap()
         {
-            if (!dead)
+            if (!dead && !idle)
                 y_v = -265;
         }
 
@@ -231,26 +234,28 @@ class FlappyFuch :public Entity
             }
         }
 
-        void update(int tick)
+        void update(int delta)
         {
             if (score_queued && !in_collision) {
                 score_count++;
                 score_queued = false;
-                if (Mix_PlayChannel(1, g_score, 0) == -1 ) {
+                if (Mix_PlayChannel(-1, g_score, 0) == -1 ) {
                     std::cerr << "Mix_PlayChannel: " << Mix_GetError() << std::endl;
                 }
             }
 
             int acceleration = 920;
+            float t = (delta / 1000.0f);
             
             if (dead)
                 acceleration = 5000;
 
-            float t = ((tick - last_tick) / 1000.0f);
-            y += y_v * t;
-            y_v += acceleration * t;
-            if (y <= 0.0f)
-                y = 0.0f;
+            if (!idle) {
+                y += y_v * t;
+                y_v += acceleration * t;
+                if (y <= 0.0f)
+                    y = 0.0f;
+            }
 
             if (y >= SCREEN_HEIGHT - frames[current_frame].h - 10 - 60) {
                 die();
@@ -266,10 +271,11 @@ class FlappyFuch :public Entity
             }
 
             if (!dead) {
-                if (next_frame <= tick) {
+                if (next_frame >= 60) {
                     current_frame = (current_frame + 1) % 4;
-                    next_frame = tick + 60;
+                    next_frame = 0;
                 }
+                next_frame += delta;
             } else {
                 current_frame = 0;
             }
@@ -277,13 +283,26 @@ class FlappyFuch :public Entity
             set_collision();
 
             in_collision = false;
-
-            last_tick = tick;
         }
 
         void set_texture(SDL_Texture *texture)
         {
             this->texture = texture;
+        }
+
+        void set_idle()
+        {
+            idle = true;
+        }
+
+        void set_active()
+        {
+            idle = false;
+        }
+
+        bool is_idle()
+        {
+            return idle;
         }
 
         void die()
@@ -315,6 +334,7 @@ class FlappyFuch :public Entity
         int score_count;
         float threshold;
         bool dead, score_queued, in_collision;
+        bool idle;
 };
 
 
@@ -405,13 +425,9 @@ class Obstacle :public Entity
             }
         }
 
-        void update(int tick)
+        void update(int delta)
         {
-            int delta = tick - last_tick;
-            if(!player_is_dead)
-                set_x(x - SPEED * (delta / 1000.0f));
-
-            last_tick = tick;
+            set_x(x - SPEED * (delta / 1000.0f));
         }
 
         void set_x(float x)
@@ -634,7 +650,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    FlappyFuch player = FlappyFuch();
+    FlappyFuch player = FlappyFuch(SCREEN_WIDTH / 12,
+                                   SCREEN_HEIGHT / 2 - 60);
 
     unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine generator(seed);
@@ -710,8 +727,8 @@ int main(int argc, char *argv[]) {
         { 185, 245, 8, 10 }, // 8
         { 195, 245, 8, 10 }, // 9
 
-        { 287, 74, 7, 10 },  // 0_i
-        { 288, 162, 7, 10 }, // 1_i
+        { 287, 74,  6, 7 },  // 0_i
+        { 288, 162, 6, 7 }, // 1_i
         { 204, 245, 6, 7 },  // 2_i
         { 212, 245, 6, 7 },  // 3_i
         { 220, 245, 6, 7 },  // 4_i
@@ -721,6 +738,23 @@ int main(int argc, char *argv[]) {
         { 284, 213, 6, 7 },  // 8_i
         { 292, 213, 6, 7 },  // 9_i
     };
+
+    SDL_Rect start_btn = {
+        242, 213, 40, 14
+    };
+
+    SDL_Rect start_dest = {
+        40,
+        SCREEN_HEIGHT - 100,
+        40 * 2,
+        14 * 2
+    };
+
+    bool start_hot = false;
+    bool start_active = false;
+    bool mouse_down = false;
+
+    player.set_idle();
 
     while (!quit) {
         delta = SDL_GetTicks() - last_tick;
@@ -744,6 +778,15 @@ int main(int argc, char *argv[]) {
                             break;
                     }
                     break;
+
+                case SDL_MOUSEBUTTONDOWN:
+                    mouse_down = true;
+                    break;
+
+                case SDL_MOUSEBUTTONUP:
+                    mouse_down = false;
+                    break;
+
                 case SDL_QUIT:
                     return(0);
             }
@@ -771,13 +814,16 @@ int main(int argc, char *argv[]) {
         if (ground_x_2 <= -(154 * 2 * num_ground))
             ground_x_2 = ground_x_1 + 154 * 2 * num_ground;
 
-        player.update(last_tick);
-        for (std::vector<Obstacle>::iterator it = obstacles.begin(); it != obstacles.end(); it++) {
-            it->update(last_tick);
-            if (it->get_x() + it->get_width() <= 0) {
-                it->set_x(last.get_x() + 200);
-                it->set_height(y_gen());
-                last = *it;
+        player.update(delta);
+
+        if (!player.is_idle() && !player_is_dead) {
+            for (std::vector<Obstacle>::iterator it = obstacles.begin(); it != obstacles.end(); it++) {
+                it->update(delta);
+                if (it->get_x() + it->get_width() <= 0) {
+                    it->set_x(last.get_x() + 200);
+                    it->set_height(y_gen());
+                    last = *it;
+                }
             }
         }
 
@@ -793,6 +839,27 @@ int main(int argc, char *argv[]) {
             };
 
             score_dest_rect.push_back(dest);
+        }
+
+        int mouse_x, mouse_y;
+        SDL_GetMouseState(&mouse_x, &mouse_y);
+
+        if (CollisionBank::check_point_collision(mouse_x, mouse_y, start_dest)) {
+            start_hot = true;
+        } else {
+            start_hot = false;
+        }
+
+        if(start_hot) {
+            if (!start_active && mouse_down) {
+                start_active = true;
+                start_dest.y += 5;
+            }
+            else if (start_active && !mouse_down) {
+                player.set_active();
+                start_active = false;
+                start_dest.y -= 5;
+            }
         }
 
         SDL_RenderClear(renderer);
@@ -811,6 +878,9 @@ int main(int argc, char *argv[]) {
         }
 
         player.draw(renderer);
+
+        sp::render_texture(renderer, tex, start_dest, &start_btn);
+
         SDL_RenderPresent(renderer);
     }
 
