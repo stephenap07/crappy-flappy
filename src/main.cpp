@@ -705,7 +705,7 @@ int main(int argc, char *argv[]) {
     }
 
     int num_ground = SCREEN_WIDTH / (154 * 2) + 1;
-    SDL_Rect ground = { 146, 1, 154, 55 };
+    SDL_Rect ground = { 146, 0, 154, 55 };
 
     SDL_Rect ground_rects[num_ground];
 
@@ -806,14 +806,14 @@ int main(int argc, char *argv[]) {
     };
 
     SDL_Rect tap_src = {
-        172, 120, 39, 51
+        160, 117, 48, 53
     };
 
     SDL_Rect tap_dest = {
-        SCREEN_WIDTH / 2 - 39,
-        SCREEN_HEIGHT / 2 - 51,
-        39 * 2,
-        51 * 2
+        SCREEN_WIDTH / 2 - 48,
+        SCREEN_HEIGHT / 2 - 53,
+        48 * 2,
+        53 * 2
     };
 
     bool ok_hot = false;
@@ -906,7 +906,7 @@ int main(int argc, char *argv[]) {
 
             score_dest_rect.push_back(dest);
         }
-        
+    
         /**
          * User Interface
          */
@@ -933,7 +933,9 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        /**
+        */
+
+        /** 
          * Game Over Screen
          */
 
@@ -949,9 +951,10 @@ int main(int argc, char *argv[]) {
         for (std::vector<Obstacle>::iterator it = obstacles.begin(); it != obstacles.end(); it++)
             it->draw(renderer);
 
-        for (int i = 0; i < score_dest_rect.size(); i++) {
-            sp::render_texture(renderer, tex, score_dest_rect[i], &numbers[score_array[i]]);
-        }
+        if (!player.is_dead())
+            for (int i = 0; i < score_dest_rect.size(); i++) {
+                sp::render_texture(renderer, tex, score_dest_rect[i], &numbers[score_array[i]]);
+            }
 
         player.draw(renderer);
 
@@ -987,6 +990,25 @@ int main(int argc, char *argv[]) {
             sp::render_texture(renderer, tex, game_over_dest, &game_over_src);
             sp::render_texture(renderer, tex, score_board_dest, &score_board_src);
             sp::render_texture(renderer, tex, ok_dest, &ok_src);
+
+            std::vector<SDL_Rect> tmp_score_dest_rect;
+            std::vector<int> high_score = digit_to_array(player.get_score());
+
+            for (int i = high_score.size() - 1; i >= 0; i--) {
+                SDL_Rect dest = {
+                    85 + (int)(SCREEN_WIDTH / 2) - (12 * i + 10),
+                    (int)(SCREEN_HEIGHT / 2),
+                    12,
+                    14
+                };
+
+                tmp_score_dest_rect.push_back(dest);
+            }
+        
+
+            for (int i = 0; i < tmp_score_dest_rect.size(); i++) {
+                sp::render_texture(renderer, tex, tmp_score_dest_rect[i], &numbers[high_score[i] + 10]);
+            }
         }
 
         if (player.is_idle()) {
