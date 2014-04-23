@@ -236,7 +236,7 @@ class FlappyFuch :public Entity
 
         void update(int delta)
         {
-            if (score_queued && !in_collision) {
+            if (score_queued && !in_collision && !idle && !dead) {
                 score_count++;
                 score_queued = false;
                 if (Mix_PlayChannel(-1, g_score, 0) == -1 ) {
@@ -264,7 +264,7 @@ class FlappyFuch :public Entity
                     angle += (90 - angle) * t * 52;
                 else
                     angle = 90;
-            } else {
+            } else if (!idle) {
                 angle += ((y_v / 10.0) - angle) * t * 15;
                 if (angle >= 360 || angle <= -360)
                     angle = 0;
@@ -324,6 +324,27 @@ class FlappyFuch :public Entity
         int get_score()
         {
             return score_count;
+        }
+
+        bool is_dead()
+        {
+            return dead;
+        }
+
+        void set_alive()
+        {
+            dead = false;
+            player_is_dead = false;
+            score_count = 0;
+            in_collision = false;
+            score_queued = false;
+            angle = 0;
+        }
+
+        void set_y(int y)
+        {
+            this->y = y;
+            set_collision();
         }
 
     private:
@@ -728,7 +749,7 @@ int main(int argc, char *argv[]) {
         { 195, 245, 8, 10 }, // 9
 
         { 287, 74,  6, 7 },  // 0_i
-        { 288, 162, 6, 7 }, // 1_i
+        { 288, 162, 6, 7 },  // 1_i
         { 204, 245, 6, 7 },  // 2_i
         { 212, 245, 6, 7 },  // 3_i
         { 220, 245, 6, 7 },  // 4_i
@@ -753,6 +774,50 @@ int main(int argc, char *argv[]) {
     bool start_hot = false;
     bool start_active = false;
     bool mouse_down = false;
+
+    SDL_Rect game_over_src = {
+        146, 199, 94, 19
+    };
+
+    SDL_Rect game_over_dest = {
+        SCREEN_WIDTH / 2 - 94,
+        SCREEN_HEIGHT / 2 - 19 * 5,
+        94 * 2,
+        19 * 2
+    };
+
+    SDL_Rect score_board_src = {
+        146, 58, 113, 58
+    };
+
+    SDL_Rect score_board_dest = {
+        SCREEN_WIDTH / 2 - 113,
+        SCREEN_HEIGHT / 2 - 19 * 2,
+        113 * 2,
+        58 * 2
+    };
+
+    SDL_Rect ok_src = {
+        246, 134, 40, 14
+    };
+
+    SDL_Rect ok_dest = {
+        40, SCREEN_HEIGHT - 100, 40 * 2, 14 * 2
+    };
+
+    SDL_Rect tap_src = {
+        172, 120, 39, 51
+    };
+
+    SDL_Rect tap_dest = {
+        SCREEN_WIDTH / 2 - 39,
+        SCREEN_HEIGHT / 2 - 51,
+        39 * 2,
+        51 * 2
+    };
+
+    bool ok_hot = false;
+    bool ok_active = false;
 
     player.set_idle();
 
@@ -795,6 +860,7 @@ int main(int argc, char *argv[]) {
         const Uint8 *state = SDL_GetKeyboardState(NULL);
         if (!lock_flap && state[SDL_SCANCODE_SPACE])
         {
+            player.set_active();
             lock_flap = true;
             player.flap();
         } else if(!state[SDL_SCANCODE_SPACE]) {
@@ -840,9 +906,14 @@ int main(int argc, char *argv[]) {
 
             score_dest_rect.push_back(dest);
         }
+        
+        /**
+         * User Interface
+         */
 
         int mouse_x, mouse_y;
         SDL_GetMouseState(&mouse_x, &mouse_y);
+        /*
 
         if (CollisionBank::check_point_collision(mouse_x, mouse_y, start_dest)) {
             start_hot = true;
@@ -862,6 +933,11 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        /**
+         * Game Over Screen
+         */
+
+
         SDL_RenderClear(renderer);
 
         for (int i = 0; i < (SCREEN_WIDTH / 143); i++)
@@ -879,7 +955,45 @@ int main(int argc, char *argv[]) {
 
         player.draw(renderer);
 
-        sp::render_texture(renderer, tex, start_dest, &start_btn);
+        // sp::render_texture(renderer, tex, start_dest, &start_btn);
+
+        if (player.is_dead()) {
+
+            if (CollisionBank::check_point_collision(mouse_x, mouse_y, ok_dest)) {
+                ok_hot = true;
+            } else {
+                ok_hot = false;
+            }
+
+            if(ok_hot) {
+                if (!ok_active && mouse_down) {
+                    ok_active = true;
+                    ok_dest.y += 5;
+                }
+                else if (ok_active && !mouse_down) {
+                    // reset the game
+                    player.set_alive();
+                    player.set_idle();
+                    player.set_y(SCREEN_HEIGHT / 2 - 60);
+
+                    for (int i = 0; i < obstacles.size(); i++)
+                        obstacles[i].set_x(600 + 200 * i);
+
+                    ok_active = false;
+                    ok_dest.y -= 5;
+                }
+            }
+
+            sp::render_texture(renderer, tex, game_over_dest, &game_over_src);
+            sp::render_texture(renderer, tex, score_board_dest, &score_board_src);
+            sp::render_texture(renderer, tex, ok_dest, &ok_src);
+        }
+
+        if (player.is_idle()) {
+            tap_dest.y = SCREEN_HEIGHT / 2 + 200 * sin(last_tick / 100.0f) * (delta / 1000.0f);
+
+            sp::render_texture(renderer, tex, tap_dest, &tap_src);
+        }
 
         SDL_RenderPresent(renderer);
     }
