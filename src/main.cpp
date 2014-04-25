@@ -3,6 +3,8 @@
 #include <random>
 #include <functional>
 #include <chrono>
+#include <fstream>
+#include <algorithm>
 
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_image.h"
@@ -29,8 +31,6 @@
 #define AMASK 0xff000000
 #endif
 
-
-static bool player_is_dead = false;
 
 Mix_Chunk *g_score = nullptr;
 
@@ -307,7 +307,6 @@ class FlappyFuch :public Entity
 
         void die()
         {
-            player_is_dead = true;
             dead = true;
         }
 
@@ -334,7 +333,6 @@ class FlappyFuch :public Entity
         void set_alive()
         {
             dead = false;
-            player_is_dead = false;
             score_count = 0;
             in_collision = false;
             score_queued = false;
@@ -554,43 +552,6 @@ class Obstacle :public Entity
 };
 
 
-/**
- * Figures out the endianess and applies the pixel color to the surface
- */
-static inline void put_pixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
-{
-    int bpp = surface->format->BytesPerPixel;
-    /* Here p is the address to the pixel we want to set */
-    Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
-
-    switch(bpp) {
-        case 1:
-            *p = pixel;
-            break;
-
-        case 2:
-            *(Uint16 *)p = pixel;
-            break;
-
-        case 3:
-            if(SDL_BYTEORDER == SDL_BIG_ENDIAN) {
-                p[0] = (pixel >> 16) & 0xff;
-                p[1] = (pixel >> 8) & 0xff;
-                p[2] = pixel & 0xff;
-            } else {
-                p[0] = pixel & 0xff;
-                p[1] = (pixel >> 8) & 0xff;
-                p[2] = (pixel >> 16) & 0xff;
-            }
-            break;
-
-        case 4:
-            *(Uint32 *)p = pixel;
-            break;
-    }
-}
-
-
 static std::vector<int> digit_to_array(int digit)
 {
     std::vector<int> result;
@@ -748,8 +709,8 @@ int main(int argc, char *argv[]) {
         { 185, 245, 8, 10 }, // 8
         { 195, 245, 8, 10 }, // 9
 
-        { 287, 74,  6, 7 },  // 0_i
-        { 288, 162, 6, 7 },  // 1_i
+        { 288, 74,  6, 7 },  // 0_i
+        { 289, 162, 6, 7 },  // 1_i
         { 204, 245, 6, 7 },  // 2_i
         { 212, 245, 6, 7 },  // 3_i
         { 220, 245, 6, 7 },  // 4_i
@@ -760,19 +721,6 @@ int main(int argc, char *argv[]) {
         { 292, 213, 6, 7 },  // 9_i
     };
 
-    SDL_Rect start_btn = {
-        242, 213, 40, 14
-    };
-
-    SDL_Rect start_dest = {
-        40,
-        SCREEN_HEIGHT - 100,
-        40 * 2,
-        14 * 2
-    };
-
-    bool start_hot = false;
-    bool start_active = false;
     bool mouse_down = false;
 
     SDL_Rect game_over_src = {
@@ -819,7 +767,34 @@ int main(int argc, char *argv[]) {
     bool ok_hot = false;
     bool ok_active = false;
 
+    bool set_best_score = false;
+
     player.set_idle();
+
+    std::ifstream high_score_fs_in;
+    std::ofstream high_score_fs;
+
+    high_score_fs.open("highscore", std::fstream::out | std::fstream::app);
+    high_score_fs_in.open("highscore", std::fstream::in);
+
+    if (high_score_fs_in.fail() || high_score_fs.fail() ) {
+        std::cerr << "Failed to open highscore file\n";
+        return 1;
+    }
+
+    std::vector<int> high_score_list;
+    int tmp_score;
+    while (high_score_fs_in >> tmp_score) {
+        high_score_list.push_back(tmp_score);
+    }
+
+    high_score_fs_in.close();
+
+    int best_score = 0;
+    if (high_score_list.size()) {
+        best_score = *std::max_element(high_score_list.begin(),
+                                       high_score_list.end());
+    };
 
     while (!quit) {
         delta = SDL_GetTicks() - last_tick;
@@ -853,9 +828,10 @@ int main(int argc, char *argv[]) {
                     break;
 
                 case SDL_QUIT:
-                    return(0);
+                    quit = true;
             }
         }
+
 
         const Uint8 *state = SDL_GetKeyboardState(NULL);
         if (!lock_flap && state[SDL_SCANCODE_SPACE])
@@ -869,7 +845,7 @@ int main(int argc, char *argv[]) {
 
         col_bank.dispatch_collisions();
 
-        if (!player_is_dead) {
+        if (!player.is_dead()) {
             ground_x_1 -= SPEED * (delta / 1000.0f);
             ground_x_2 -= SPEED * (delta / 1000.0f);
         }
@@ -882,7 +858,7 @@ int main(int argc, char *argv[]) {
 
         player.update(delta);
 
-        if (!player.is_idle() && !player_is_dead) {
+        if (!player.is_idle() && !player.is_dead()) {
             for (std::vector<Obstacle>::iterator it = obstacles.begin(); it != obstacles.end(); it++) {
                 it->update(delta);
                 if (it->get_x() + it->get_width() <= 0) {
@@ -913,32 +889,6 @@ int main(int argc, char *argv[]) {
 
         int mouse_x, mouse_y;
         SDL_GetMouseState(&mouse_x, &mouse_y);
-        /*
-
-        if (CollisionBank::check_point_collision(mouse_x, mouse_y, start_dest)) {
-            start_hot = true;
-        } else {
-            start_hot = false;
-        }
-
-        if(start_hot) {
-            if (!start_active && mouse_down) {
-                start_active = true;
-                start_dest.y += 5;
-            }
-            else if (start_active && !mouse_down) {
-                player.set_active();
-                start_active = false;
-                start_dest.y -= 5;
-            }
-        }
-
-        */
-
-        /** 
-         * Game Over Screen
-         */
-
 
         SDL_RenderClear(renderer);
 
@@ -962,10 +912,23 @@ int main(int argc, char *argv[]) {
 
         if (player.is_dead()) {
 
+            high_score_list.push_back(player.get_score());
+
+            if (high_score_list.size()) {
+                best_score = *std::max_element(high_score_list.begin(),
+                        high_score_list.end());
+            };
+
+            if (!set_best_score) {
+                high_score_fs << player.get_score() << std::endl;
+                set_best_score = true;
+            }
+
             if (CollisionBank::check_point_collision(mouse_x, mouse_y, ok_dest)) {
                 ok_hot = true;
             } else {
                 ok_hot = false;
+                ok_active = false;
             }
 
             if(ok_hot) {
@@ -978,6 +941,7 @@ int main(int argc, char *argv[]) {
                     player.set_alive();
                     player.set_idle();
                     player.set_y(SCREEN_HEIGHT / 2 - 60);
+                    set_best_score = false;
 
                     for (int i = 0; i < obstacles.size(); i++)
                         obstacles[i].set_x(600 + 200 * i);
@@ -992,7 +956,9 @@ int main(int argc, char *argv[]) {
             sp::render_texture(renderer, tex, ok_dest, &ok_src);
 
             std::vector<SDL_Rect> tmp_score_dest_rect;
+            std::vector<SDL_Rect> tmp_best_score_dest_rect;
             std::vector<int> high_score = digit_to_array(player.get_score());
+            std::vector<int> best_score_vec = digit_to_array(best_score);
 
             for (int i = high_score.size() - 1; i >= 0; i--) {
                 SDL_Rect dest = {
@@ -1004,10 +970,24 @@ int main(int argc, char *argv[]) {
 
                 tmp_score_dest_rect.push_back(dest);
             }
-        
+
+            for (int i = best_score_vec.size() - 1; i >= 0; i--) {
+                SDL_Rect dest = {
+                    85 + (int)(SCREEN_WIDTH / 2) - (12 * i + 10),
+                    50 + (int)(SCREEN_HEIGHT / 2),
+                    12,
+                    14
+                };
+
+                tmp_best_score_dest_rect.push_back(dest);
+            }
 
             for (int i = 0; i < tmp_score_dest_rect.size(); i++) {
                 sp::render_texture(renderer, tex, tmp_score_dest_rect[i], &numbers[high_score[i] + 10]);
+            }
+
+            for (int i = 0; i < best_score_vec.size(); i++) {
+                sp::render_texture(renderer, tex, tmp_best_score_dest_rect[i], &numbers[best_score_vec[i] + 10]);
             }
         }
 
@@ -1022,12 +1002,16 @@ int main(int argc, char *argv[]) {
 
     while(Mix_Playing(-1) != 0);
 
-    Mix_FreeChunk(g_score);
+    high_score_fs.close();
     g_score = nullptr;
 
+    Mix_FreeChunk(g_score);
+
     SDL_DestroyTexture(tex);
+    SDL_DestroyTexture(ground_texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(win);
+
     Mix_Quit();
     SDL_Quit();
 
