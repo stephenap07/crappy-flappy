@@ -992,7 +992,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (player.is_idle()) {
-            tap_dest.y = SCREEN_HEIGHT / 2 + 200 * sin(last_tick / 100.0f) * (delta / 1000.0f);
+            tap_dest.y = SCREEN_HEIGHT / 2 + 5 * cos(last_tick / 120.0f);
 
             sp::render_texture(renderer, tex, tap_dest, &tap_src);
         }
